@@ -279,6 +279,17 @@ const executeJob = async (jobId) => {
     video.status = 'completed';
     await video.save();
 
+    // Day-by-Day Auto-Scheduler: Schedule newly cut clips day-by-day directly to YouTube
+    try {
+      const { autoScheduleClips } = require('./autoScheduleService');
+      const scheduleResult = await autoScheduleClips(createdClips, video.user);
+      if (scheduleResult && scheduleResult.scheduledCount > 0) {
+        logger.info(`[Pipeline:AutoSchedule] 🚀 Automatically scheduled ${scheduleResult.scheduledCount} Shorts day-by-day on YouTube!`);
+      }
+    } catch (schedErr) {
+      logger.warn(`[Pipeline:AutoSchedule] Auto-scheduling notice: ${schedErr.message}. Clips remain in library drafts.`);
+    }
+
     job.status = 'completed';
     job.progress = 100;
     job.stage = 'Completed successfully';

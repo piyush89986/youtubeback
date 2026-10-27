@@ -112,6 +112,14 @@ const checkAndPublishScheduledClips = async () => {
     }).limit(5);
 
     for (const schedule of eligibleSchedules) {
+      // Check if creator has turned OFF the worker
+      const User = require('../models/User');
+      const userDoc = await User.findById(schedule.user);
+      if (userDoc && (userDoc.settings?.workerActive === false || userDoc.settings?.autoSchedulerEnabled === false)) {
+        logger.info(`[Scheduler:Standby] Worker is currently OFF for User ${schedule.user}. Holding schedule ${schedule._id} in standby.`);
+        continue;
+      }
+
       // Atomic locking to guarantee idempotency and prevent duplicate uploads
       const locked = await PublishingSchedule.findOneAndUpdate(
         { _id: schedule._id, status: 'pending' },

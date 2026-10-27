@@ -52,6 +52,14 @@ const userSchema = new mongoose.Schema(
         type: Boolean,
         default: false,
       },
+      workerActive: {
+        type: Boolean,
+        default: true,
+      },
+      autoSchedulerEnabled: {
+        type: Boolean,
+        default: true,
+      },
     },
   },
   {

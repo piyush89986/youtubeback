@@ -71,7 +71,57 @@ const getDashboardStats = async (req, res, next) => {
       recentClips,
       geminiKeyPool: geminiKeyManager.getPoolStatus(),
       openaiKeyPool: openaiKeyManager.getPoolStatus(),
+      workerActive: req.user.settings?.workerActive !== false,
+      autoSchedulerEnabled: req.user.settings?.autoSchedulerEnabled !== false,
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Toggle Background Worker & Auto-Scheduler ON/OFF
+// @route   PATCH /api/dashboard/worker-toggle
+// @access  Private
+const toggleWorkerStatus = async (req, res, next) => {
+  try {
+    const User = require('../models/User');
+    const { backfillAutoSchedule } = require('../services/autoScheduleService');
+    const userId = req.user._id;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // Toggle or explicitly set
+    const currentActive = user.settings?.workerActive !== false;
+    const nextState = req.body.workerActive !== undefined ? Boolean(req.body.workerActive) : !currentActive;
+
+    user.settings = {
+      ...user.settings,
+      workerActive: nextState,
+      autoSchedulerEnabled: nextState,
+    };
+    await user.save();
+
+    let backfilledCount = 0;
+    if (nextState) {
+      // If toggled ON, immediately auto-schedule any draft clips waiting in library
+      const backfillRes = await backfillAutoSchedule(userId);
+      backfilledCount = backfillRes?.scheduledCount || 0;
+    }
+
+    return apiSuccess(
+      res,
+      {
+        workerActive: nextState,
+        autoSchedulerEnabled: nextState,
+        backfilledCount,
+      },
+      nextState
+        ? `Worker & Auto-Scheduler activated! ${backfilledCount > 0 ? `${backfilledCount} clips scheduled day-by-day.` : ''}`
+        : 'Worker & Auto-Scheduler paused.'
+    );
   } catch (error) {
     next(error);
   }
@@ -79,4 +129,5 @@ const getDashboardStats = async (req, res, next) => {
 
 module.exports = {
   getDashboardStats,
+  toggleWorkerStatus,
 };
