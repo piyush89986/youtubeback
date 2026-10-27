@@ -81,9 +81,11 @@ const createVerticalShort = ({
       .videoFilters(videoFilter)
       .videoCodec('libx264')
       .audioCodec('aac')
-      .audioBitrate('192k')
+      .audioBitrate('128k')
       .outputOptions([
-        '-preset fast',
+        '-threads 1', // Crucial: limit to 1 thread so memory stays < 200MB on Render 512MB RAM Free tier
+        '-preset ultrafast', // Fastest rendering time
+        '-crf 26',
         '-movflags +faststart', // Web playback optimization
         '-pix_fmt yuv420p',
       ])

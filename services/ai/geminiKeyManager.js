@@ -109,13 +109,39 @@ class GeminiKeyManager {
       try {
         logger.info(`[GeminiKeyManager] Attempt ${attempt}/${maxAttempts} using Key #${this.currentIndex + 1} (${maskedKey})...`);
         
-        const genAI = new GoogleGenerativeAI(activeKey);
-        const model = genAI.getGenerativeModel({ model: modelName });
+        const candidateModels = [modelName, 'gemini-1.5-flash-latest', 'gemini-2.0-flash', 'gemini-1.5-pro'].filter((m, i, arr) => arr.indexOf(m) === i);
+        let response = null;
+        let lastModelErr = null;
 
-        const response = await model.generateContent({
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
-          generationConfig,
-        });
+        for (const candidate of candidateModels) {
+          try {
+            const genAI = new GoogleGenerativeAI(activeKey);
+            const model = genAI.getGenerativeModel({ model: candidate });
+
+            response = await model.generateContent({
+              contents: [{ role: 'user', parts: [{ text: prompt }] }],
+              generationConfig,
+            });
+
+            if (response) {
+              if (candidate !== modelName) {
+                logger.info(`[GeminiKeyManager] Successfully resolved with fallback model: "${candidate}"`);
+              }
+              break;
+            }
+          } catch (mErr) {
+            lastModelErr = mErr;
+            if (mErr.message?.includes('404')) {
+              logger.warn(`[GeminiKeyManager] Model "${candidate}" returned 404. Attempting next candidate...`);
+              continue;
+            }
+            throw mErr;
+          }
+        }
+
+        if (!response && lastModelErr) {
+          throw lastModelErr;
+        }
 
         // Record success
         this.rotationStats.keySuccesses[maskedKey] = (this.rotationStats.keySuccesses[maskedKey] || 0) + 1;

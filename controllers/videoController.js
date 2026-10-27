@@ -34,7 +34,7 @@ const getUploadSignature = (req, res, next) => {
 // @desc    Direct upload endpoint for local development without Cloudinary
 // @route   POST /api/videos/upload-direct
 // @access  Private
-const uploadDirect = (req, res, next) => {
+const uploadDirect = async (req, res, next) => {
   try {
     logger.info(`[VideoController:upload-direct] Processing direct upload from User ID: ${req.user?._id}`);
 
@@ -43,14 +43,30 @@ const uploadDirect = (req, res, next) => {
       return apiError(res, 'No video file received', 400);
     }
 
-    const publicUrl = `/uploads/${req.file.filename}`;
+    let publicUrl = `/uploads/${req.file.filename}`;
+    let storageKey = req.file.filename;
+
+    // Automatically backup source video to Cloudinary for permanent cloud storage
+    try {
+      const { uploadFileToCloudinary } = require('../services/storage/storageService');
+      logger.info(`[VideoController:upload-direct] Uploading source video to Cloudinary: ${req.file.path}...`);
+      const cloudResult = await uploadFileToCloudinary(req.file.path, 'yt_source_videos');
+      if (cloudResult && cloudResult.secureUrl) {
+        publicUrl = cloudResult.secureUrl;
+        storageKey = cloudResult.publicId;
+        logger.info(`[VideoController:upload-direct] Source video permanently stored in Cloudinary: ${publicUrl}`);
+      }
+    } catch (cloudErr) {
+      logger.warn(`[VideoController:upload-direct] Cloudinary auto-backup notice: ${cloudErr.message}. Serving local copy.`);
+    }
+
     logger.info(`[VideoController:upload-direct] SUCCESS: File stored at: ${req.file.path} (${(req.file.size / (1024 * 1024)).toFixed(2)} MB), Serving at: ${publicUrl}`);
 
     return apiSuccess(
       res,
       {
         url: publicUrl,
-        key: req.file.filename,
+        key: storageKey,
         originalFilename: req.file.originalname,
         fileSize: req.file.size,
       },

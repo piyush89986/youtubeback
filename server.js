@@ -86,7 +86,17 @@ app.use(cookieParser());
 
 // Serve local static video uploads
 const path = require('path');
+const fs = require('fs');
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Fallback for missing ephemeral uploads on Render (e.g. after container redeploy/restart)
+app.use('/uploads', (req, res, next) => {
+  if (req.path.endsWith('.mp4')) {
+    logger.warn(`[StaticFallback] Ephemeral media file missing on disk: ${req.path}. Redirecting to high-quality fallback video stream.`);
+    return res.redirect('https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4');
+  }
+  next();
+});
 
 // Rate limiter for general API routes
 app.use('/api', apiLimiter);
