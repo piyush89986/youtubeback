@@ -172,29 +172,33 @@ const getAuthenticatedClient = async (channelId, userId) => {
  * Disconnect YouTube Channel and revoke tokens with Google
  */
 const revokeChannelAccess = async (channelId, userId) => {
-  const account = await YouTubeAccount.findOne({
-    user: userId,
-    channelId,
-  }).select('+encryptedAccessToken +encryptedRefreshToken');
+  const query = { user: userId };
+  if (channelId && /^[0-9a-fA-F]{24}$/.test(channelId)) {
+    query.$or = [{ channelId }, { _id: channelId }];
+  } else {
+    query.channelId = channelId;
+  }
+
+  const account = await YouTubeAccount.findOne(query).select('+encryptedAccessToken +encryptedRefreshToken');
 
   if (!account) {
     throw new Error('Channel not found');
   }
 
   try {
-    const accessToken = decrypt(account.encryptedAccessToken);
-    const oauth2Client = createOAuth2Client();
-    await oauth2Client.revokeToken(accessToken);
+    if (account.encryptedAccessToken) {
+      const accessToken = decrypt(account.encryptedAccessToken);
+      const oauth2Client = createOAuth2Client();
+      await oauth2Client.revokeToken(accessToken);
+    }
   } catch (err) {
     logger.warn(`Could not revoke token directly with Google: ${err.message}`);
   }
 
-  account.isConnected = false;
-  account.encryptedAccessToken = '';
-  account.encryptedRefreshToken = '';
-  await account.save();
+  // Delete channel record so reconnecting starts completely fresh
+  await YouTubeAccount.findByIdAndDelete(account._id);
 
-  logger.info(`Channel disconnected: ${account.channelTitle} (${channelId})`);
+  logger.info(`Channel disconnected successfully: ${account.channelTitle} (${account.channelId})`);
   return account;
 };
 
