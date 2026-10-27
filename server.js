@@ -14,6 +14,9 @@ const dashboardRoutes = require('./routes/dashboardRoutes');
 
 const app = express();
 
+// Trust reverse proxy (Render, AWS ELB, Heroku) to preserve client IP & HTTPS status
+app.set('trust proxy', 1);
+
 // Security middleware
 app.use(
   helmet({
@@ -21,15 +24,60 @@ app.use(
   })
 );
 
+// Allowed origins whitelist for CORS
+const explicitOrigins = [
+  'https://youtubfr.vercel.app',
+  'https://youtubeback-osll.onrender.com',
+  'https://youtube-worker-jkjs.onrender.com',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'http://localhost:3000',
+  'http://localhost:5000',
+];
+
+if (env.CLIENT_URL) {
+  const customOrigins = env.CLIENT_URL.split(',').map((u) => u.trim().replace(/\/+$/, ''));
+  customOrigins.forEach((u) => {
+    if (u && !explicitOrigins.includes(u)) {
+      explicitOrigins.push(u);
+    }
+  });
+}
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Allow non-browser calls (like curl, Postman, mobile apps, server-to-server, Render health check)
+    if (!origin) return callback(null, true);
+
+    const cleanOrigin = origin.replace(/\/+$/, '');
+
+    // Check exact whitelist
+    if (explicitOrigins.includes(cleanOrigin)) {
+      return callback(null, true);
+    }
+
+    // Allow all Vercel domains (production & preview branch deployments)
+    if (/\.vercel\.app$/.test(cleanOrigin)) {
+      return callback(null, true);
+    }
+
+    // Allow all OnRender domains within the deployment ecosystem
+    if (/\.onrender\.com$/.test(cleanOrigin)) {
+      return callback(null, true);
+    }
+
+    logger.warn(`[CORS] Blocked request from unlisted origin: ${origin}`);
+    return callback(new Error(`CORS blocked origin: ${origin}`));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Range', 'Accept'],
+  exposedHeaders: ['Content-Range', 'Accept-Ranges', 'Content-Length', 'Set-Cookie'],
+};
+
 // CORS configuration
-app.use(
-  cors({
-    origin: [env.CLIENT_URL, 'http://localhost:5173', 'http://127.0.0.1:5173'],
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  })
-);
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
 // Body and Cookie Parsers
 app.use(express.json({ limit: '10mb' }));

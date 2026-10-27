@@ -3,7 +3,7 @@ require('dotenv').config();
 const env = {
   NODE_ENV: process.env.NODE_ENV || 'development',
   PORT: parseInt(process.env.PORT, 10) || 5000,
-  CLIENT_URL: process.env.CLIENT_URL || 'http://localhost:5173',
+  CLIENT_URL: (process.env.CLIENT_URL || 'https://youtubfr.vercel.app').replace(/\/+$/, ''),
 
   // Database
   MONGODB_URI: process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/yt_shorts_automation',
@@ -19,7 +19,11 @@ const env = {
   // Google OAuth & YouTube API
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || '',
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET || '',
-  GOOGLE_REDIRECT_URI: process.env.GOOGLE_REDIRECT_URI || 'http://localhost:5000/api/youtube/oauth2callback',
+  GOOGLE_REDIRECT_URI: process.env.GOOGLE_REDIRECT_URI || (
+    process.env.NODE_ENV === 'production'
+      ? 'https://youtubeback-osll.onrender.com/api/youtube/oauth2callback'
+      : 'http://localhost:5000/api/youtube/oauth2callback'
+  ),
 
   // Cloudinary Storage
   CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME || '',
