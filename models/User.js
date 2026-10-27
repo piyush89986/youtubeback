@@ -41,7 +41,7 @@ const userSchema = new mongoose.Schema(
       },
       preferredAIProvider: {
         type: String,
-        enum: ['gemini', 'openai'],
+        enum: ['gemini', 'openai', 'both'],
         default: 'gemini',
       },
       defaultPublishingHour: {

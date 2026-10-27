@@ -76,10 +76,13 @@ const confirmUpload = async (req, res, next) => {
       clippingMode = 'ai_smart',
       targetDuration = 60,
       subtitlesEnabled = true,
+      aiProvider,
     } = req.body;
 
+    const chosenAiProvider = aiProvider || req.user?.settings?.preferredAIProvider || env.AI_PROVIDER || 'gemini';
+
     logger.info(`[VideoController:confirm] Received confirmation request from User: ${req.user?._id}`);
-    logger.info(`[VideoController:confirm] Payload: Title="${title}", File="${originalFilename}", Size=${fileSize}, Key="${storageKey}", URL="${storageUrl}", Mode="${clippingMode}", TargetDuration=${targetDuration}s, SubtitlesEnabled=${subtitlesEnabled}`);
+    logger.info(`[VideoController:confirm] Payload: Title="${title}", File="${originalFilename}", Size=${fileSize}, Key="${storageKey}", URL="${storageUrl}", Mode="${clippingMode}", TargetDuration=${targetDuration}s, SubtitlesEnabled=${subtitlesEnabled}, AIProvider=${chosenAiProvider}`);
 
     if (!title || !storageKey || !storageUrl) {
       logger.warn('[VideoController:confirm] Validation failed: Missing required fields (title, storageKey, or storageUrl)');
@@ -113,6 +116,7 @@ const confirmUpload = async (req, res, next) => {
         clippingMode,
         targetDuration,
         subtitlesEnabled: Boolean(subtitlesEnabled),
+        aiProvider: chosenAiProvider,
       },
     });
     logger.info(`[VideoController:confirm] ProcessingJob document created: ID=${job._id}, Type=${job.jobType}`);

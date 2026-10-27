@@ -144,8 +144,9 @@ const executeJob = async (jobId) => {
     await job.save();
 
     // Step 2: Speech-to-text transcription
-    logger.info(`[Pipeline:Stage 2] Running speech transcription engine on: ${inputPath}`);
-    const { rawText, segments } = await transcribeAudio(inputPath);
+    const aiProvider = job.payload?.aiProvider || env.AI_PROVIDER || 'gemini';
+    logger.info(`[Pipeline:Stage 2] Running speech transcription engine on: ${inputPath} (Engine: ${aiProvider})`);
+    const { rawText, segments } = await transcribeAudio(inputPath, aiProvider);
     logger.info(`[Pipeline:Stage 2] Speech transcription completed. Extracted ${segments.length} timestamped speech segments.`);
     video.transcriptRaw = rawText;
     video.transcript = segments;
@@ -158,11 +159,11 @@ const executeJob = async (jobId) => {
     // Step 3: Determine clip boundaries (AI smart or fixed)
     const clippingMode = job.payload?.clippingMode || 'ai_smart';
     const targetDuration = job.payload?.targetDuration || 60;
-    logger.info(`[Pipeline:Stage 3] Identifying viral short clips. Mode: "${clippingMode}", Target Length: ~${targetDuration}s`);
+    logger.info(`[Pipeline:Stage 3] Identifying viral short clips. Mode: "${clippingMode}", Target Length: ~${targetDuration}s, Engine: "${aiProvider}"`);
 
     let clipsPlan = [];
     if (clippingMode === 'ai_smart') {
-      clipsPlan = await extractSmartClips(rawText, video.duration, targetDuration);
+      clipsPlan = await extractSmartClips(rawText, video.duration, targetDuration, aiProvider);
     } else {
       clipsPlan = generateFixedSegments(video.duration, targetDuration);
     }

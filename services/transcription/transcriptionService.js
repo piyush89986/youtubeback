@@ -9,8 +9,9 @@ const { extractAudio } = require('../video/ffmpegService');
 /**
  * Transcribe video audio to timestamped segments
  */
-const transcribeAudio = async (audioOrVideoPath) => {
+const transcribeAudio = async (audioOrVideoPath, provider = 'gemini') => {
   let tempAudioFile = null;
+  logger.info(`[transcribeAudio] Starting transcription pipeline (Mode: "${provider}")...`);
 
   if (openaiKeyManager.hasKeys() && fs.existsSync(audioOrVideoPath)) {
     try {

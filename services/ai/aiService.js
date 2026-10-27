@@ -42,47 +42,137 @@ Return ONLY valid JSON matching this schema:
 const extractSmartClips = async (transcriptText, totalDuration, targetDuration = 60, provider = env.AI_PROVIDER) => {
   const prompt = `${CLIP_EXTRACTION_PROMPT}\n\nTotal Video Duration: ${totalDuration}s\nTarget Short Length: ~${targetDuration}s\n\nTRANSCRIPT:\n${transcriptText}`;
 
-  // 1. Try Gemini with multi-key rotation pool first
-  if (provider === 'gemini' || !openaiKeyManager.hasKeys()) {
-    try {
-      logger.info('Analyzing transcript with Gemini Multi-Key Failover Pool...');
-      const response = await geminiKeyManager.generateContentWithFailover(
-        prompt,
-        { responseMimeType: 'application/json' },
-        'gemini-1.5-flash'
-      );
+  logger.info(`[extractSmartClips] Executing clip analysis in AI mode: "${provider}"`);
 
-      const responseText = response.response.text();
-      const parsed = JSON.parse(responseText);
-      if (parsed.clips && parsed.clips.length > 0) {
-        return parsed.clips;
+  // Helper function to call Gemini
+  const runGemini = async () => {
+    logger.info('[AI:Gemini] Analyzing transcript with Gemini Multi-Key Failover Pool...');
+    const response = await geminiKeyManager.generateContentWithFailover(
+      prompt,
+      { responseMimeType: 'application/json' },
+      'gemini-1.5-flash'
+    );
+    const responseText = response.response.text();
+    const parsed = JSON.parse(responseText);
+    return (parsed.clips || []).map((c) => ({ ...c, aiModel: 'Google Gemini 1.5' }));
+  };
+
+  // Helper function to call OpenAI
+  const runOpenAI = async () => {
+    logger.info('[AI:OpenAI] Analyzing transcript with OpenAI Multi-Key Failover Pool (GPT-4o)...');
+    const completion = await openaiKeyManager.createChatCompletionWithFailover({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: prompt }],
+      response_format: { type: 'json_object' },
+    });
+    const responseText = completion.choices[0].message.content;
+    const parsed = JSON.parse(responseText);
+    return (parsed.clips || []).map((c) => ({ ...c, aiModel: 'OpenAI GPT-4o' }));
+  };
+
+  // =========================================================================
+  // MODE 1: 'both' (Ensemble Mode - Runs BOTH Gemini and OpenAI together)
+  // =========================================================================
+  if (provider === 'both') {
+    logger.info('[AI:Both] Dual AI Mode active: Running Google Gemini & OpenAI simultaneously...');
+    const [geminiResult, openaiResult] = await Promise.allSettled([
+      geminiKeyManager.keys.length > 0 ? runGemini() : Promise.reject(new Error('No Gemini keys in pool')),
+      openaiKeyManager.hasKeys() ? runOpenAI() : Promise.reject(new Error('No OpenAI keys in pool')),
+    ]);
+
+    const combinedClips = [];
+    if (geminiResult.status === 'fulfilled' && geminiResult.value.length > 0) {
+      logger.info(`[AI:Both] Gemini extracted ${geminiResult.value.length} viral candidate clips.`);
+      combinedClips.push(...geminiResult.value);
+    } else if (geminiResult.status === 'rejected') {
+      logger.warn(`[AI:Both] Gemini extraction error: ${geminiResult.reason?.message}`);
+    }
+
+    if (openaiResult.status === 'fulfilled' && openaiResult.value.length > 0) {
+      logger.info(`[AI:Both] OpenAI extracted ${openaiResult.value.length} viral candidate clips.`);
+      combinedClips.push(...openaiResult.value);
+    } else if (openaiResult.status === 'rejected') {
+      logger.warn(`[AI:Both] OpenAI extraction error: ${openaiResult.reason?.message}`);
+    }
+
+    if (combinedClips.length > 0) {
+      // Sort by hook score descending (highest viral potential first)
+      combinedClips.sort((a, b) => (b.hookScore || 0) - (a.hookScore || 0));
+
+      // Deduplicate overlapping segments (if start times within 8 seconds)
+      const dedupedClips = [];
+      for (const clip of combinedClips) {
+        const isDuplicate = dedupedClips.some((d) => Math.abs(d.startTime - clip.startTime) < 8);
+        if (!isDuplicate) {
+          dedupedClips.push(clip);
+        }
       }
-    } catch (geminiErr) {
-      logger.warn(`All Gemini keys in rotation pool exhausted: ${geminiErr.message}`);
+      logger.info(`[AI:Both] Successfully merged and deduplicated into ${dedupedClips.length} top viral clips from both engines!`);
+      return dedupedClips;
     }
   }
 
-  // 2. Try OpenAI Multi-Key Rotation Pool if configured
-  if (openaiKeyManager.hasKeys()) {
-    try {
-      logger.info('Attempting extraction with OpenAI Multi-Key Failover Pool...');
-      const completion = await openaiKeyManager.createChatCompletionWithFailover({
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'user', content: prompt }],
-        response_format: { type: 'json_object' },
-      });
-
-      const responseText = completion.choices[0].message.content;
-      const parsed = JSON.parse(responseText);
-      if (parsed.clips && parsed.clips.length > 0) {
-        return parsed.clips;
+  // =========================================================================
+  // MODE 2: 'openai' (Strictly OpenAI, fallback to Gemini only if OpenAI fails)
+  // =========================================================================
+  if (provider === 'openai') {
+    if (openaiKeyManager.hasKeys()) {
+      try {
+        const clips = await runOpenAI();
+        if (clips.length > 0) {
+          logger.info(`[AI:OpenAI] Successfully extracted ${clips.length} clips with OpenAI.`);
+          return clips;
+        }
+      } catch (openaiErr) {
+        logger.warn(`[AI:OpenAI] OpenAI keys failed: ${openaiErr.message}. Attempting Gemini failover...`);
       }
-    } catch (openaiErr) {
-      logger.warn(`All OpenAI keys in rotation pool exhausted: ${openaiErr.message}`);
+    }
+
+    // Fallback to Gemini if OpenAI fails
+    if (geminiKeyManager.keys.length > 0) {
+      try {
+        const clips = await runGemini();
+        if (clips.length > 0) {
+          logger.info(`[AI:Gemini Fallback] Extracted ${clips.length} clips via Gemini fallback.`);
+          return clips;
+        }
+      } catch (geminiErr) {
+        logger.warn(`[AI:Gemini Fallback] Gemini fallback error: ${geminiErr.message}`);
+      }
     }
   }
 
-  // 3. Fallback to heuristic segmentation if all external API calls fail
+  // =========================================================================
+  // MODE 3: 'gemini' (Strictly Gemini, fallback to OpenAI only if Gemini fails)
+  // =========================================================================
+  if (provider === 'gemini' || !provider) {
+    if (geminiKeyManager.keys.length > 0) {
+      try {
+        const clips = await runGemini();
+        if (clips.length > 0) {
+          logger.info(`[AI:Gemini] Successfully extracted ${clips.length} clips with Gemini.`);
+          return clips;
+        }
+      } catch (geminiErr) {
+        logger.warn(`[AI:Gemini] Gemini keys failed: ${geminiErr.message}. Attempting OpenAI failover...`);
+      }
+    }
+
+    // Fallback to OpenAI if Gemini fails
+    if (openaiKeyManager.hasKeys()) {
+      try {
+        const clips = await runOpenAI();
+        if (clips.length > 0) {
+          logger.info(`[AI:OpenAI Fallback] Extracted ${clips.length} clips via OpenAI fallback.`);
+          return clips;
+        }
+      } catch (openaiErr) {
+        logger.warn(`[AI:OpenAI Fallback] OpenAI fallback error: ${openaiErr.message}`);
+      }
+    }
+  }
+
+  // Final heuristic fallback
   logger.info('Falling back to smart heuristic clip boundary generator...');
   return generateHeuristicClips(transcriptText, totalDuration, targetDuration);
 };
