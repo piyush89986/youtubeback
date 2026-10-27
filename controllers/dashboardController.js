@@ -53,6 +53,7 @@ const getDashboardStats = async (req, res, next) => {
     ]);
 
     const geminiKeyManager = require('../services/ai/geminiKeyManager');
+    const openaiKeyManager = require('../services/ai/openaiKeyManager');
 
     return apiSuccess(res, {
       metrics: {
@@ -69,6 +70,7 @@ const getDashboardStats = async (req, res, next) => {
       recentSourceVideos,
       recentClips,
       geminiKeyPool: geminiKeyManager.getPoolStatus(),
+      openaiKeyPool: openaiKeyManager.getPoolStatus(),
     });
   } catch (error) {
     next(error);

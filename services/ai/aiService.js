@@ -1,13 +1,7 @@
-const OpenAI = require('openai');
 const env = require('../../config/env');
 const logger = require('../../utils/logger');
 const geminiKeyManager = require('./geminiKeyManager');
-
-// Initialize OpenAI fallback
-let openaiClient = null;
-if (env.OPENAI_API_KEY) {
-  openaiClient = new OpenAI({ apiKey: env.OPENAI_API_KEY });
-}
+const openaiKeyManager = require('./openaiKeyManager');
 
 /**
  * Prompt to analyze timestamped transcript and return engaging YouTube Shorts segments
@@ -48,8 +42,8 @@ Return ONLY valid JSON matching this schema:
 const extractSmartClips = async (transcriptText, totalDuration, targetDuration = 60, provider = env.AI_PROVIDER) => {
   const prompt = `${CLIP_EXTRACTION_PROMPT}\n\nTotal Video Duration: ${totalDuration}s\nTarget Short Length: ~${targetDuration}s\n\nTRANSCRIPT:\n${transcriptText}`;
 
-  // 1. Try Gemini with 10-key rotation pool first
-  if (provider === 'gemini' || !openaiClient) {
+  // 1. Try Gemini with multi-key rotation pool first
+  if (provider === 'gemini' || !openaiKeyManager.hasKeys()) {
     try {
       logger.info('Analyzing transcript with Gemini Multi-Key Failover Pool...');
       const response = await geminiKeyManager.generateContentWithFailover(
@@ -68,11 +62,11 @@ const extractSmartClips = async (transcriptText, totalDuration, targetDuration =
     }
   }
 
-  // 2. Try OpenAI GPT-4o if configured
-  if (openaiClient) {
+  // 2. Try OpenAI Multi-Key Rotation Pool if configured
+  if (openaiKeyManager.hasKeys()) {
     try {
-      logger.info('Falling back to OpenAI GPT-4o...');
-      const completion = await openaiClient.chat.completions.create({
+      logger.info('Attempting extraction with OpenAI Multi-Key Failover Pool...');
+      const completion = await openaiKeyManager.createChatCompletionWithFailover({
         model: 'gpt-4o-mini',
         messages: [{ role: 'user', content: prompt }],
         response_format: { type: 'json_object' },
@@ -84,7 +78,7 @@ const extractSmartClips = async (transcriptText, totalDuration, targetDuration =
         return parsed.clips;
       }
     } catch (openaiErr) {
-      logger.warn(`OpenAI fallback error: ${openaiErr.message}`);
+      logger.warn(`All OpenAI keys in rotation pool exhausted: ${openaiErr.message}`);
     }
   }
 
@@ -127,4 +121,5 @@ const generateHeuristicClips = (transcriptText, totalDuration, targetDuration = 
 module.exports = {
   extractSmartClips,
   geminiKeyManager,
+  openaiKeyManager,
 };

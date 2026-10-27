@@ -1,15 +1,10 @@
-const OpenAI = require('openai');
 const fs = require('fs');
 const path = require('path');
 const env = require('../../config/env');
 const logger = require('../../utils/logger');
+const openaiKeyManager = require('../ai/openaiKeyManager');
 
 const { extractAudio } = require('../video/ffmpegService');
-
-let openaiClient = null;
-if (env.OPENAI_API_KEY) {
-  openaiClient = new OpenAI({ apiKey: env.OPENAI_API_KEY });
-}
 
 /**
  * Transcribe video audio to timestamped segments
@@ -17,7 +12,7 @@ if (env.OPENAI_API_KEY) {
 const transcribeAudio = async (audioOrVideoPath) => {
   let tempAudioFile = null;
 
-  if (openaiClient && fs.existsSync(audioOrVideoPath)) {
+  if (openaiKeyManager.hasKeys() && fs.existsSync(audioOrVideoPath)) {
     try {
       let targetAudioPath = audioOrVideoPath;
       const isVideo = /\.(mp4|mov|mkv|avi|webm|flv)$/i.test(audioOrVideoPath);
@@ -32,11 +27,9 @@ const transcribeAudio = async (audioOrVideoPath) => {
         targetAudioPath = tempAudioFile;
       }
 
-      logger.info(`Running Whisper transcription on: ${targetAudioPath}`);
-      const fileStream = fs.createReadStream(targetAudioPath);
+      logger.info(`Running Whisper transcription on: ${targetAudioPath} with OpenAI Multi-Key Failover...`);
 
-      const transcript = await openaiClient.audio.transcriptions.create({
-        file: fileStream,
+      const transcript = await openaiKeyManager.createAudioTranscriptionWithFailover(targetAudioPath, {
         model: 'whisper-1',
         response_format: 'verbose_json',
         timestamp_granularities: ['segment'],
