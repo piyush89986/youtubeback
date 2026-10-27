@@ -198,7 +198,7 @@ const executeJob = async (jobId) => {
           (s) => s.start >= plan.startTime && s.end <= plan.endTime + 2
         );
         srtPath = path.join(outputDir, `subs_${Date.now()}_${i}.srt`);
-        generateSrtFile(clipSegments, srtPath);
+        generateSrtFile(clipSegments, srtPath, plan.startTime);
       }
 
       if (fs.existsSync(inputPath)) {

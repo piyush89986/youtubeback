@@ -72,7 +72,8 @@ const createVerticalShort = ({
     if (subtitlesPath && fs.existsSync(subtitlesPath)) {
       // Escape Windows backslashes for FFmpeg subtitles filter
       const escapedSrt = subtitlesPath.replace(/\\/g, '/').replace(/:/g, '\\:');
-      videoFilter += `,subtitles='${escapedSrt}':force_style='FontSize=22,PrimaryColour=&H00FFFFFF&,OutlineColour=&H00000000&,BorderStyle=3,Outline=2'`;
+      // Alignment=2 (bottom center), MarginV=45 (bottom margin), FontSize=16 (clean unobtrusive size)
+      videoFilter += `,subtitles='${escapedSrt}':force_style='Alignment=2,MarginV=45,FontSize=16,PrimaryColour=&H00FFFFFF&,OutlineColour=&H00000000&,BorderStyle=3,Outline=1'`;
     }
 
     let command = ffmpeg(inputPath)

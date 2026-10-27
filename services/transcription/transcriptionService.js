@@ -89,12 +89,30 @@ const formatSrtTime = (seconds) => {
 /**
  * Generate SRT subtitle file from transcript segments
  */
-const generateSrtFile = (segments, outputPath) => {
+const generateSrtFile = (segments, outputPath, clipStartTime = 0) => {
   let srtContent = '';
-  segments.forEach((seg, index) => {
-    srtContent += `${index + 1}\n`;
-    srtContent += `${formatSrtTime(seg.start)} --> ${formatSrtTime(seg.end)}\n`;
-    srtContent += `${seg.text}\n\n`;
+  let subtitleIndex = 1;
+
+  (segments || []).forEach((seg) => {
+    // Crucial: Calculate relative start and end times matching the clipped video duration!
+    const relStart = Math.max(0, (seg.start || 0) - clipStartTime);
+    const relEnd = Math.max(relStart + 0.5, (seg.end || seg.start + 1.5) - clipStartTime);
+
+    let text = (seg.text || '').trim();
+
+    // Linux server without Indic fonts cannot render Devanagari Unicode (\u0900-\u097F)
+    // If Devanagari is detected, skip burning raw glyphs to avoid "tofu" [▯] rectangles
+    const hasDevanagari = /[\u0900-\u097F]/.test(text);
+    if (hasDevanagari) {
+      // Clean display or skip burning to prevent drawing rectangles on video
+      return;
+    }
+
+    if (text) {
+      srtContent += `${subtitleIndex++}\n`;
+      srtContent += `${formatSrtTime(relStart)} --> ${formatSrtTime(relEnd)}\n`;
+      srtContent += `${text}\n\n`;
+    }
   });
 
   const dir = path.dirname(outputPath);
