@@ -130,11 +130,13 @@ const publishNow = async (req, res, next) => {
     // Resolve channel: use specified channel or default to user's first connected channel
     let targetAccount = null;
     if (channelId) {
-      targetAccount = await YouTubeAccount.findOne({
-        _id: channelId,
-        user: req.user._id,
-        isConnected: true,
-      });
+      const channelQuery = { user: req.user._id, isConnected: true };
+      if (/^[0-9a-fA-F]{24}$/.test(String(channelId))) {
+        channelQuery.$or = [{ _id: channelId }, { channelId: String(channelId) }];
+      } else {
+        channelQuery.channelId = String(channelId);
+      }
+      targetAccount = await YouTubeAccount.findOne(channelQuery);
     } else {
       targetAccount = await YouTubeAccount.findOne({
         user: req.user._id,

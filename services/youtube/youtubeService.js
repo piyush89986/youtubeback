@@ -118,12 +118,15 @@ const handleOAuthCallback = async (code, userId) => {
 /**
  * Get authenticated Google OAuth2 client with auto-refreshing tokens
  */
-const getAuthenticatedClient = async (channelId, userId) => {
-  const account = await YouTubeAccount.findOne({
-    user: userId,
-    channelId,
-    isConnected: true,
-  }).select('+encryptedAccessToken +encryptedRefreshToken');
+const getAuthenticatedClient = async (channelIdOrId, userId) => {
+  const query = { user: userId, isConnected: true };
+  if (channelIdOrId && /^[0-9a-fA-F]{24}$/.test(String(channelIdOrId))) {
+    query.$or = [{ _id: channelIdOrId }, { channelId: String(channelIdOrId) }];
+  } else if (channelIdOrId) {
+    query.channelId = String(channelIdOrId);
+  }
+
+  const account = await YouTubeAccount.findOne(query).select('+encryptedAccessToken +encryptedRefreshToken');
 
   if (!account) {
     throw new Error('Connected YouTube account not found or access was revoked.');
