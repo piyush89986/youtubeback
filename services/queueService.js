@@ -7,6 +7,7 @@ const ShortClip = require('../models/ShortClip');
 const { probeVideo, createVerticalShort, generateFixedSegments } = require('./video/ffmpegService');
 const { transcribeAudio, generateSrtFile } = require('./transcription/transcriptionService');
 const { extractSmartClips } = require('./ai/aiService');
+const { uploadFileToCloudinary } = require('./storage/storageService');
 const axios = require('axios');
 const logger = require('../utils/logger');
 const path = require('path');
@@ -200,8 +201,6 @@ const executeJob = async (jobId) => {
         generateSrtFile(clipSegments, srtPath);
       }
 
-      let storageUrl = `/uploads/clips/${clipKey}`;
-
       if (fs.existsSync(inputPath)) {
         try {
           await createVerticalShort({
@@ -231,6 +230,26 @@ const executeJob = async (jobId) => {
         try { fs.unlinkSync(srtPath); } catch (e) {} 
       }
 
+      let storageUrl = `/uploads/clips/${clipKey}`;
+      let storageProvider = 'local';
+      let storageKey = clipKey;
+
+      // Upload extracted vertical short clip to Cloudinary
+      if (fs.existsSync(clipOutputPath)) {
+        try {
+          logger.info(`[Pipeline:Stage 4] Storing rendered clip to Cloudinary: ${clipOutputPath}...`);
+          const cloudResult = await uploadFileToCloudinary(clipOutputPath, 'yt_shorts_clips');
+          if (cloudResult && cloudResult.secureUrl) {
+            storageUrl = cloudResult.secureUrl;
+            storageProvider = 'cloudinary';
+            storageKey = cloudResult.publicId;
+            logger.info(`[Pipeline:Stage 4] Short clip saved to Cloudinary! URL: ${storageUrl}`);
+          }
+        } catch (cloudErr) {
+          logger.warn(`[Pipeline:Stage 4] Cloudinary upload notice: ${cloudErr.message}. Fallback to local storage.`);
+        }
+      }
+
       // Step 5: Save ShortClip record in MongoDB
       const clipDoc = await ShortClip.create({
         user: video.user,
@@ -245,7 +264,8 @@ const executeJob = async (jobId) => {
         hookScore: plan.hookScore || 85,
         hookSummary: plan.hookSummary || 'High engagement opening hook',
         subtitlesEnabled,
-        storageKey: clipKey,
+        storageProvider,
+        storageKey,
         storageUrl,
         status: 'ready',
         publishingStatus: 'draft',

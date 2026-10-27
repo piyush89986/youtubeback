@@ -219,6 +219,20 @@ const rerenderClip = async (req, res, next) => {
       try { fs.unlinkSync(srtPath); } catch (e) {}
     }
 
+    // Upload re-rendered clip to Cloudinary if available
+    try {
+      const { uploadFileToCloudinary } = require('../services/storage/storageService');
+      const cloudResult = await uploadFileToCloudinary(outputPath, 'yt_shorts_clips');
+      if (cloudResult && cloudResult.secureUrl) {
+        clip.storageUrl = cloudResult.secureUrl;
+        clip.storageProvider = 'cloudinary';
+        clip.storageKey = cloudResult.publicId;
+        logger.info(`[rerenderClip] Re-rendered clip uploaded to Cloudinary: ${cloudResult.secureUrl}`);
+      }
+    } catch (cloudErr) {
+      logger.warn(`[rerenderClip] Cloudinary upload notice: ${cloudErr.message}`);
+    }
+
     clip.updatedAt = new Date();
     await clip.save();
 

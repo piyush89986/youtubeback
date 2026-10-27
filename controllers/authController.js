@@ -153,9 +153,16 @@ const updateProfile = async (req, res, next) => {
 
     if (name) user.name = name.trim();
     if (settings) {
+      const sanitizedSettings = { ...settings };
+      if (sanitizedSettings.preferredAIProvider) {
+        const allowed = ['gemini', 'openai', 'both'];
+        if (!allowed.includes(sanitizedSettings.preferredAIProvider)) {
+          sanitizedSettings.preferredAIProvider = 'gemini';
+        }
+      }
       user.settings = {
         ...user.settings,
-        ...settings,
+        ...sanitizedSettings,
       };
     }
 

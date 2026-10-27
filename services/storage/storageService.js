@@ -69,7 +69,50 @@ const generateSignedUpload = (filename, contentType) => {
   };
 };
 
+const fs = require('fs');
+
+/**
+ * Upload a local media file (rendered video clip or audio) to Cloudinary
+ */
+const uploadFileToCloudinary = async (localFilePath, folder = 'yt_shorts_clips') => {
+  const isCloudinaryReady = Boolean(
+    env.CLOUDINARY_CLOUD_NAME && env.CLOUDINARY_API_KEY && env.CLOUDINARY_API_SECRET
+  );
+
+  if (!isCloudinaryReady) {
+    logger.warn('[StorageService] Cloudinary credentials not configured. Skipping cloud upload.');
+    return null;
+  }
+
+  if (!fs.existsSync(localFilePath)) {
+    logger.warn(`[StorageService] Local file not found for Cloudinary upload: ${localFilePath}`);
+    return null;
+  }
+
+  try {
+    logger.info(`[StorageService:Cloudinary] Uploading rendered video clip to Cloudinary: ${localFilePath}...`);
+    const result = await cloudinary.uploader.upload(localFilePath, {
+      resource_type: 'video',
+      folder,
+      timeout: 180000,
+    });
+
+    logger.info(`[StorageService:Cloudinary] Clip upload successful! URL: ${result.secure_url} (Public ID: ${result.public_id})`);
+    return {
+      secureUrl: result.secure_url,
+      publicId: result.public_id,
+      format: result.format,
+      bytes: result.bytes,
+      duration: result.duration,
+    };
+  } catch (err) {
+    logger.error(`[StorageService:Cloudinary] Failed to upload clip to Cloudinary: ${err.message}`);
+    return null;
+  }
+};
+
 module.exports = {
   generateSignedUpload,
+  uploadFileToCloudinary,
   cloudinary,
 };
