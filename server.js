@@ -28,7 +28,7 @@ app.use(
 const explicitOrigins = [
   'https://youtubfr.vercel.app',
   'https://youtubeback-osll.onrender.com',
-  'https://youtube-worker-jkjs.onrender.com',
+  'https://youtube-worker-t4xe.onrender.com',
   'http://localhost:5173',
   'http://127.0.0.1:5173',
   'http://localhost:3000',
