@@ -90,12 +90,38 @@ const uploadFileToCloudinary = async (localFilePath, folder = 'yt_shorts_clips')
   }
 
   try {
-    logger.info(`[StorageService:Cloudinary] Uploading rendered video clip to Cloudinary: ${localFilePath}...`);
-    const result = await cloudinary.uploader.upload(localFilePath, {
-      resource_type: 'video',
-      folder,
-      timeout: 180000,
-    });
+    const stats = fs.statSync(localFilePath);
+    const sizeMb = (stats.size / (1024 * 1024)).toFixed(2);
+    logger.info(`[StorageService:Cloudinary] Uploading media file (${sizeMb} MB) to Cloudinary folder "${folder}": ${localFilePath}...`);
+
+    // Use upload_large for chunked streaming to support 100MB+ files and prevent HTTP 413
+    const isLarge = stats.size > 20 * 1024 * 1024;
+    let result;
+
+    if (isLarge) {
+      logger.info(`[StorageService:Cloudinary] File is ${sizeMb} MB (>20MB). Using chunked upload_large (6MB chunks)...`);
+      result = await new Promise((resolve, reject) => {
+        cloudinary.uploader.upload_large(
+          localFilePath,
+          {
+            resource_type: 'video',
+            folder,
+            chunk_size: 6000000, // 6MB chunks to strictly avoid HTTP 413 limits
+            timeout: 300000,
+          },
+          (err, res) => {
+            if (err) return reject(err);
+            resolve(res);
+          }
+        );
+      });
+    } else {
+      result = await cloudinary.uploader.upload(localFilePath, {
+        resource_type: 'video',
+        folder,
+        timeout: 180000,
+      });
+    }
 
     logger.info(`[StorageService:Cloudinary] Clip upload successful! URL: ${result.secure_url} (Public ID: ${result.public_id})`);
     return {

@@ -150,8 +150,10 @@ const extractAudio = (videoPath, audioOutputPath) => {
     ffmpeg(videoPath)
       .noVideo()
       .audioCodec('libmp3lame')
-      .audioBitrate('64k')
+      .audioBitrate('48k')
       .audioChannels(1)
+      .audioFrequency(16000) // 16kHz is native for Whisper AI & keeps 24min audio under 9MB
+      .outputOptions(['-threads 1'])
       .output(audioOutputPath)
       .on('end', () => {
         logger.info(`Extracted compact audio track to: ${audioOutputPath}`);
