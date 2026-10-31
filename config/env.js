@@ -26,9 +26,9 @@ const env = {
   ),
 
   // Cloudinary Storage
-  CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME || '',
-  CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY || '',
-  CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET || '',
+  CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME || 'ypuxmjhz',
+  CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY || '351146714642611',
+  CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET || 'xnWtWsvSktnT1n24vvWdKpcyn_Y',
 
   // AI Providers (Gemini / OpenAI)
   AI_PROVIDER: process.env.AI_PROVIDER || 'gemini', // 'gemini' | 'openai'
