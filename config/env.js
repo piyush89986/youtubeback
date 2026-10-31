@@ -35,6 +35,10 @@ const env = {
   GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
   OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',
 
+  // Worker Service (Render Web Service Background Processor)
+  WORKER_URL: (process.env.WORKER_URL || 'https://youtube-worker-t4xe.onrender.com').replace(/\/+$/, ''),
+  INTERNAL_WORKER_SECRET: process.env.INTERNAL_WORKER_SECRET || 'shorts_internal_secure_worker_token_2026',
+
   // Limits
   MAX_UPLOAD_SIZE_MB: parseInt(process.env.MAX_UPLOAD_SIZE_MB, 10) || 500, // 500MB
   MAX_CLIP_DURATION_SEC: parseInt(process.env.MAX_CLIP_DURATION_SEC, 10) || 180, // YouTube Shorts max 180s

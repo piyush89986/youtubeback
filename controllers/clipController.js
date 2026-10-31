@@ -83,12 +83,20 @@ const updateClipMetadata = async (req, res, next) => {
   }
 };
 
-// @desc    Trigger AI or fixed clipping for a source video
+// @desc    Trigger AI, full parts, or fixed clipping for a source video
 // @route   POST /api/clips/generate
 // @access  Private
 const generateClips = async (req, res, next) => {
   try {
-    const { sourceVideoId, clippingMode = 'ai_smart', targetDuration = 60 } = req.body;
+    const {
+      sourceVideoId,
+      clippingMode = 'ai_smart',
+      targetDuration = 60,
+      maxClips = 5,
+      clipsCount,
+      subtitlesEnabled = true,
+      aiProvider,
+    } = req.body;
 
     const video = await SourceVideo.findOne({
       _id: sourceVideoId,
@@ -98,6 +106,9 @@ const generateClips = async (req, res, next) => {
     if (!video) {
       return apiError(res, 'Source video not found', 404);
     }
+
+    const requestedMaxClips = maxClips || clipsCount || (clippingMode === 'full_parts' ? 'all' : 5);
+    const chosenAiProvider = aiProvider || req.user?.settings?.preferredAIProvider || 'gemini';
 
     // Create and dispatch processing job
     const job = await ProcessingJob.create({
@@ -110,6 +121,9 @@ const generateClips = async (req, res, next) => {
       payload: {
         clippingMode,
         targetDuration,
+        maxClips: requestedMaxClips,
+        subtitlesEnabled: Boolean(subtitlesEnabled),
+        aiProvider: chosenAiProvider,
       },
     });
 

@@ -6,7 +6,7 @@ const SourceVideo = require('../models/SourceVideo');
 const ShortClip = require('../models/ShortClip');
 const { probeVideo, createVerticalShort, generateFixedSegments } = require('./video/ffmpegService');
 const { transcribeAudio, generateSrtFile } = require('./transcription/transcriptionService');
-const { extractSmartClips } = require('./ai/aiService');
+const { extractSmartClips, generateFullVideoParts } = require('./ai/aiService');
 const { uploadFileToCloudinary } = require('./storage/storageService');
 const axios = require('axios');
 const logger = require('../utils/logger');
@@ -57,21 +57,57 @@ if (env.REDIS_URL) {
 }
 
 /**
- * Dispatch a processing job
+ * Dispatch a processing job to the Render Worker Web Service, BullMQ Redis, or fallback poller
  */
 const dispatchJob = async (jobId) => {
-  if (videoQueue) {
-    await videoQueue.add('process-job', { jobId }, { attempts: 3, backoff: { type: 'exponential', delay: 5000 } });
-    logger.info(`Job ${jobId} pushed to BullMQ queue`);
-    return;
+  logger.info(`[dispatchJob] Initiating dispatch for processing job ID: ${jobId}`);
+
+  // 1. Direct HTTP Dispatch to Render Worker Web Service
+  if (env.WORKER_URL) {
+    try {
+      logger.info(`[dispatchJob] Sending HTTP dispatch request to Render Worker (${env.WORKER_URL}/api/jobs/process)...`);
+      const response = await axios.post(
+        `${env.WORKER_URL}/api/jobs/process`,
+        {
+          jobId,
+          secret: env.INTERNAL_WORKER_SECRET,
+        },
+        { timeout: 7000 }
+      );
+      if (response.status === 200 || response.status === 202) {
+        logger.info(`[dispatchJob] 🚀 Render Worker accepted Job ${jobId} immediately via HTTP! Worker status: ${response.status}`);
+        return;
+      }
+    } catch (workerErr) {
+      logger.warn(`[dispatchJob] Render Worker HTTP dispatch failed (${workerErr.message}). Relying on BullMQ or Worker DB Poller.`);
+    }
   }
 
-  // Built-in persistent fallback queue processor (executes asynchronously)
-  setImmediate(() => {
-    executeJob(jobId).catch((err) => {
-      logger.error(`Persistent queue job execution error: ${err.message}`, err.stack);
+  // 2. BullMQ Redis Queue if configured
+  if (videoQueue) {
+    try {
+      await videoQueue.add('process-job', { jobId }, { attempts: 3, backoff: { type: 'exponential', delay: 5000 } });
+      logger.info(`[dispatchJob] Job ${jobId} pushed to BullMQ Redis queue`);
+      return;
+    } catch (redisErr) {
+      logger.warn(`[dispatchJob] BullMQ dispatch error: ${redisErr.message}`);
+    }
+  }
+
+  // 3. Resilient Fallback:
+  // The job is already saved with status: 'queued' in MongoDB.
+  // The Render Worker runs an active DB Poller that scans and claims queued jobs every 10 seconds.
+  // If in local development and worker is not running, run local fallback:
+  if (env.NODE_ENV === 'development' && (!env.WORKER_URL || env.WORKER_URL.includes('localhost'))) {
+    logger.info(`[dispatchJob] Local development fallback: executing job ${jobId} in background...`);
+    setImmediate(() => {
+      executeJob(jobId).catch((err) => {
+        logger.error(`Persistent queue job execution error: ${err.message}`, err.stack);
+      });
     });
-  });
+  } else {
+    logger.info(`[dispatchJob] Job ${jobId} is queued in MongoDB. Render Worker DB Poller will claim and execute it.`);
+  }
 };
 
 /**
@@ -157,16 +193,30 @@ const executeJob = async (jobId) => {
     job.stage = 'AI viral hook & boundary identification';
     await job.save();
 
-    // Step 3: Determine clip boundaries (AI smart or fixed)
+    // Step 3: Determine clip boundaries (AI smart, full_parts, or fixed)
     const clippingMode = job.payload?.clippingMode || 'ai_smart';
     const targetDuration = job.payload?.targetDuration || 60;
-    logger.info(`[Pipeline:Stage 3] Identifying viral short clips. Mode: "${clippingMode}", Target Length: ~${targetDuration}s, Engine: "${aiProvider}"`);
+    const maxClips = job.payload?.maxClips || job.payload?.clipsCount || (clippingMode === 'full_parts' ? 'all' : 5);
+    logger.info(`[Pipeline:Stage 3] Identifying shorts segments. Mode: "${clippingMode}", Target Length: ~${targetDuration}s, Max Clips: ${maxClips}, Engine: "${aiProvider}"`);
 
     let clipsPlan = [];
-    if (clippingMode === 'ai_smart') {
-      clipsPlan = await extractSmartClips(rawText, video.duration, targetDuration, aiProvider);
+    if (clippingMode === 'full_parts') {
+      clipsPlan = await generateFullVideoParts({
+        transcriptSegments: segments,
+        rawText,
+        totalDuration: video.duration,
+        targetDuration,
+        maxClips,
+        videoTitle: video.title,
+        provider: aiProvider,
+      });
+    } else if (clippingMode === 'ai_smart') {
+      clipsPlan = await extractSmartClips(rawText, video.duration, targetDuration, aiProvider, { maxClips });
     } else {
       clipsPlan = generateFixedSegments(video.duration, targetDuration);
+      if (maxClips && maxClips !== 'all') {
+        clipsPlan = clipsPlan.slice(0, parseInt(maxClips, 10));
+      }
     }
     logger.info(`[Pipeline:Stage 3] Identified ${clipsPlan.length} candidate shorts segments.`);
 

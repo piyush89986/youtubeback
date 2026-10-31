@@ -174,6 +174,23 @@ const { startScheduler } = require('./services/schedulerService');
 const startServer = async () => {
   await connectDB();
   startScheduler();
+
+  // Keep-alive ping to Render Worker Web Service (every 10 minutes to prevent sleeping)
+  if (env.WORKER_URL) {
+    const axios = require('axios');
+    const pingWorker = async () => {
+      try {
+        await axios.post(`${env.WORKER_URL}/api/worker/ping`, {}, { timeout: 8000 });
+        logger.info(`[WorkerKeepAlive] 🟢 Successfully pinged Render Worker: ${env.WORKER_URL}`);
+      } catch (err) {
+        logger.warn(`[WorkerKeepAlive] Render Worker ping notice: ${err.message}`);
+      }
+    };
+    // Ping 5 seconds after startup, then every 10 minutes
+    setTimeout(pingWorker, 5000);
+    setInterval(pingWorker, 10 * 60 * 1000);
+  }
+
   const PORT = env.PORT;
   app.listen(PORT, () => {
     logger.info(`Server running in ${env.NODE_ENV} mode on port ${PORT}`);

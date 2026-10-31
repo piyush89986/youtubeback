@@ -127,7 +127,43 @@ const toggleWorkerStatus = async (req, res, next) => {
   }
 };
 
+// @desc    Check Render Worker Service live health & connection status
+// @route   GET /api/dashboard/worker-status
+// @access  Private
+const getWorkerHealthStatus = async (req, res, next) => {
+  try {
+    const env = require('../config/env');
+    const axios = require('axios');
+    const workerUrl = env.WORKER_URL;
+
+    if (!workerUrl) {
+      return apiSuccess(res, { connected: false, message: 'Worker URL not configured' });
+    }
+
+    const startTime = Date.now();
+    try {
+      const response = await axios.get(`${workerUrl}/`, { timeout: 6000 });
+      const latencyMs = Date.now() - startTime;
+      return apiSuccess(res, {
+        connected: true,
+        workerUrl,
+        latencyMs,
+        workerDetails: response.data,
+      });
+    } catch (err) {
+      return apiSuccess(res, {
+        connected: false,
+        workerUrl,
+        error: err.message,
+      });
+    }
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getDashboardStats,
   toggleWorkerStatus,
+  getWorkerHealthStatus,
 };

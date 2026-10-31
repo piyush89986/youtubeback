@@ -93,12 +93,15 @@ const confirmUpload = async (req, res, next) => {
       targetDuration = 60,
       subtitlesEnabled = true,
       aiProvider,
+      maxClips = 5,
+      clipsCount,
     } = req.body;
 
+    const requestedMaxClips = maxClips || clipsCount || (clippingMode === 'full_parts' ? 'all' : 5);
     const chosenAiProvider = aiProvider || req.user?.settings?.preferredAIProvider || env.AI_PROVIDER || 'gemini';
 
     logger.info(`[VideoController:confirm] Received confirmation request from User: ${req.user?._id}`);
-    logger.info(`[VideoController:confirm] Payload: Title="${title}", File="${originalFilename}", Size=${fileSize}, Key="${storageKey}", URL="${storageUrl}", Mode="${clippingMode}", TargetDuration=${targetDuration}s, SubtitlesEnabled=${subtitlesEnabled}, AIProvider=${chosenAiProvider}`);
+    logger.info(`[VideoController:confirm] Payload: Title="${title}", File="${originalFilename}", Size=${fileSize}, Key="${storageKey}", URL="${storageUrl}", Mode="${clippingMode}", MaxClips=${requestedMaxClips}, TargetDuration=${targetDuration}s, SubtitlesEnabled=${subtitlesEnabled}, AIProvider=${chosenAiProvider}`);
 
     if (!title || !storageKey || !storageUrl) {
       logger.warn('[VideoController:confirm] Validation failed: Missing required fields (title, storageKey, or storageUrl)');
@@ -131,6 +134,7 @@ const confirmUpload = async (req, res, next) => {
       payload: {
         clippingMode,
         targetDuration,
+        maxClips: requestedMaxClips,
         subtitlesEnabled: Boolean(subtitlesEnabled),
         aiProvider: chosenAiProvider,
       },
